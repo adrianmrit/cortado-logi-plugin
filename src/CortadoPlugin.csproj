@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Version>1.0.0</Version>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Loupedeck.CortadoPlugin</RootNamespace>
+    <PluginApiDir Condition="'$(PluginApiDir)' == ''">/Applications/Utilities/LogiPluginService.app/Contents/MonoBundle</PluginApiDir>
+    <OutputPath>../bin/$(Configuration)/bin/</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="PluginApi">
+      <HintPath>$(PluginApiDir)/PluginApi.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <ProjectReference Include="../core/Cortado.Core.csproj" />
+    <EmbeddedResource Include="Assets/*.svg" />
+  </ItemGroup>
+  <Target Name="CopyPackage" AfterTargets="Build">
+    <ItemGroup>
+      <PackageFiles Include="package/**/*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(PackageFiles)" DestinationFiles="@(PackageFiles->'$(OutputPath)../%(RecursiveDir)%(Filename)%(Extension)')" />
+    <Copy SourceFiles="package/metadata/Icon256x256.png" DestinationFiles="$(OutputPath)../actionicons/#DynamicFolder.png" />
+    <Copy SourceFiles="package/metadata/Icon256x256.png" DestinationFiles="$(OutputPath)../actionsymbols/#DynamicFolder.png" />
+    <Copy SourceFiles="../LICENSE" DestinationFiles="$(OutputPath)../LICENSE" />
+  </Target>
+  <Target Name="InstallDevelopmentLink" AfterTargets="Build" Condition="'$(InstallDevelopmentLink)' == 'true'">
+    <PropertyGroup>
+      <DevelopmentPluginDir>$(HOME)/Library/Application Support/Logi/LogiPluginService/Plugins</DevelopmentPluginDir>
+    </PropertyGroup>
+    <MakeDir Directories="$(DevelopmentPluginDir)" />
+    <WriteLinesToFile File="$(DevelopmentPluginDir)/CortadoPlugin.link" Lines="$([System.IO.Path]::GetFullPath('$(OutputPath)..'))" Overwrite="true" />
+  </Target>
+</Project>

@@ -1,0 +1,15 @@
+type: plugin4
+name: Cortado
+displayName: Cortado
+description: One coffee-cup menu to keep your Mac awake indefinitely, for a duration, or until a chosen time.
+pluginFileName: CortadoPlugin.dll
+pluginFolderMac: bin
+version: 1.0.0
+author: adrianmrit
+copyright: Copyright 2026 Adrian Martinez (adrianmrit)
+supportedDevices:
+  - Loupedeck70
+minimumLoupedeckVersion: 6.4.2
+backgroundColor: 4278190080
+license: MIT
+licenseUrl: https://opensource.org/licenses/MIT
