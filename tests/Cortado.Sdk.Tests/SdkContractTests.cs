@@ -586,16 +586,16 @@ public sealed class SdkContractTests
             Assert.That(slots, Has.Length.EqualTo(8), "The host adds native Back as the ninth button at index zero.");
             Assert.That(slots.Select(slot => slot.Length == 0 ? "" : byParameter[slot]), Is.EqualTo(new[]
             {
-                menu.DraftLabel + "\nShared draft", active ? "Save" : "Start",
+                menu.DraftLabel + "\n" + (menu.View == MenuView.Duration ? "Duration" : "End time"), active ? "Save" : "Start",
                 "Minute -", "", "Minute +",
-                "Hour -", "", "Hour +"
+                "Hour -", "Reset", "Hour +"
             }));
             sessions.ReportFailure(new InvalidOperationException("A selector error."));
             var errorSlots = folder.GetButtonPressActionNames(DeviceType.Loupedeck70).ToArray();
             Assert.That(errorSlots[3], Is.EqualTo(createCommand.Invoke(folder,
                 [menu.Items().Single(item => item.Label == "View error").Parameter])));
             Assert.That(errorSlots.Where((_, index) => index != 3), Is.EqualTo(slots.Where((_, index) => index != 3)),
-                "Error details must use an empty center slot without shifting selector controls.");
+                "Error details must use the reserved middle slot without shifting selector controls.");
             folder.Deactivate();
             folder.Activate();
             Assert.Multiple(() =>

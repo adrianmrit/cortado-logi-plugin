@@ -119,10 +119,11 @@ public sealed class CortadoMenu(SessionController sessions, TimeProvider clock, 
                 break;
             default:
                 items.AddRange([
-                    ("value", DraftLabel + "\nShared draft"),
+                    ("value", DraftLabel + "\n" + (View == MenuView.Duration ? "Duration" : "End time")),
                     ("hourUp", "Hour +"), ("hourDown", "Hour -"),
                     ("minuteUp", "Minute +"), ("minuteDown", "Minute -"),
-                    ($"confirm{draftRevision}", View == MenuView.ChangeEndTime ? "Save" : "Start")
+                    ($"confirm{draftRevision}", View == MenuView.ChangeEndTime ? "Save" : "Start"),
+                    ("reset", "Reset")
                 ]);
                 if (snapshot.Error is not null)
                 {
@@ -222,6 +223,20 @@ public sealed class CortadoMenu(SessionController sessions, TimeProvider clock, 
                 break;
             case "minuteDown":
                 Adjust("minute", -1);
+                break;
+            case "reset":
+                if (View == MenuView.Duration)
+                {
+                    durationMinutes = 0;
+                }
+                else
+                {
+                    var currentLocal = TimeZoneInfo.ConvertTime(clock.GetUtcNow(), timeZone());
+                    hour = currentLocal.Hour;
+                    minute = currentLocal.Minute;
+                }
+
+                draftRevision++;
                 break;
             case var confirm when confirm == $"confirm{draftRevision}":
                 if (!IsSelector)

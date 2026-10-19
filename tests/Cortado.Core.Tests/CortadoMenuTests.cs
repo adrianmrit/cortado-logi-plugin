@@ -60,12 +60,45 @@ public sealed class CortadoMenuTests
     }
 
     [Test]
+    public void Duration_Reset_ReturnsToZeroAndRequiresPositiveValue()
+    {
+        Press("duration");
+        Press("hourUp");
+        Press("reset");
+
+        Assert.That(menu.DraftLabel, Is.EqualTo("0h 00m"));
+        Assert.Throws<ArgumentOutOfRangeException>(() => Press("confirm"));
+        Press("minuteUp");
+        Assert.That(menu.DraftLabel, Is.EqualTo("0h 01m"));
+    }
+
+    [Test]
     public void Time_Commit_UsesNextClockOccurrence()
     {
         Press("time");
         Press("hourDown");
         Assert.That(Press("confirm"), Is.True);
         Assert.That(sessions.Snapshot.Remaining, Is.EqualTo(TimeSpan.FromHours(24)));
+    }
+
+    [TestCase("time", false)]
+    [TestCase("change", true)]
+    public void Time_Reset_UsesCurrentLocalClockTime(String verb, Boolean active)
+    {
+        if (active)
+        {
+            sessions.StartDuration(TimeSpan.FromMinutes(30), sessions.Snapshot.Revision);
+            menu.Open();
+        }
+
+        var zone = TimeZoneInfo.CreateCustomTimeZone("Test +02:00", TimeSpan.FromHours(2), "Test +02:00", "Test +02:00");
+        menu = new(sessions, clock, () => zone);
+        menu.Open();
+        Press(verb);
+        Press("hourUp");
+        Press("reset");
+
+        Assert.That(menu.DraftLabel, Is.EqualTo("14:00"));
     }
 
     [Test]
@@ -162,6 +195,38 @@ public sealed class CortadoMenuTests
         Press("minuteUp");
         Assert.Throws<ArgumentException>(() => menu.Execute(oldConfirmation));
         Assert.That(factory.Started, Is.Empty);
+    }
+
+    [TestCase("duration")]
+    [TestCase("time")]
+    [TestCase("change")]
+    public void Confirm_AfterReset_RejectsStaleConfirmationAndCommitsCurrentDraft(String verb)
+    {
+        if (verb == "change")
+        {
+            sessions.StartDuration(TimeSpan.FromMinutes(30), sessions.Snapshot.Revision);
+            menu.Open();
+        }
+
+        Press(verb);
+        Press("hourUp");
+        var oldConfirmation = menu.Items().Single(item => item.Label is "Start" or "Save").Parameter;
+        var originalSession = sessions.Snapshot.Active;
+        var startedCount = factory.Started.Count;
+        Press("reset");
+
+        Assert.Throws<ArgumentException>(() => menu.Execute(oldConfirmation));
+        Assert.That(sessions.Snapshot.Active, Is.EqualTo(originalSession));
+        Assert.That(factory.Started, Has.Count.EqualTo(startedCount));
+
+        if (verb == "duration")
+        {
+            Press("minuteUp");
+        }
+
+        Assert.That(Press("confirm"), Is.True);
+        Assert.That(sessions.Snapshot.Remaining, Is.EqualTo(verb == "duration"
+            ? TimeSpan.FromMinutes(1) : TimeSpan.FromHours(24)));
     }
 
     [Test]

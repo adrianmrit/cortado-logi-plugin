@@ -99,7 +99,7 @@ namespace Loupedeck.CortadoPlugin
                 {
                     Slot("value"), Slot("confirm"),
                     Slot("minuteDown"), error is null ? String.Empty : this.CreateCommandName(error.Parameter), Slot("minuteUp"),
-                    Slot("hourDown"), String.Empty, Slot("hourUp")
+                    Slot("hourDown"), Slot("reset"), Slot("hourUp")
                 };
             }
         }
