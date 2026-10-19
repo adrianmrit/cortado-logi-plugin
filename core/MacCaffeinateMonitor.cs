@@ -8,6 +8,8 @@ namespace Cortado.Core;
 
 public sealed class MacCaffeinateMonitor : IExternalSessionMonitor
 {
+    internal const Int32 Einval = 22;
+
     public IReadOnlyList<ExternalCaffeinateSession> Read(Int32? excludedPid)
     {
         if (!OperatingSystem.IsMacOS())
@@ -49,7 +51,7 @@ public sealed class MacCaffeinateMonitor : IExternalSessionMonitor
                 continue;
             }
 
-            var arguments = ReadArguments(pid);
+            var arguments = ReadArguments(identity);
             var deadline = arguments is null ? null : TimeoutDeadline(arguments,
                 DateTimeOffset.FromUnixTimeSeconds(identity.StartSeconds).AddTicks(identity.StartMicroseconds * 10));
             if (ReadIdentity(pid) == identity)
@@ -180,7 +182,25 @@ public sealed class MacCaffeinateMonitor : IExternalSessionMonitor
             ? new(pid, info.StartSeconds, info.StartMicroseconds, null) : null;
     }
 
-    private static IReadOnlyList<String>? ReadArguments(Int32 pid)
+    internal static IReadOnlyList<String>? ReadArguments(ExternalCaffeinateSession identity)
+    {
+        try
+        {
+            return ReadNativeArguments(identity.Pid);
+        }
+        // KERN_PROCARGS2 can return EINVAL when the process exits during inspection.
+        catch (Win32Exception exception) when (exception.NativeErrorCode == Einval)
+        {
+            if (ReadIdentity(identity.Pid) != identity)
+            {
+                return null;
+            }
+
+            throw;
+        }
+    }
+
+    internal static IReadOnlyList<String>? ReadNativeArguments(Int32 pid)
     {
         var name = new[] { 1, 49, pid }; // CTL_KERN, KERN_PROCARGS2.
         UIntPtr length = 0;

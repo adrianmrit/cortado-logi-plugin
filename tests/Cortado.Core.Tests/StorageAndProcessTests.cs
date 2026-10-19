@@ -395,6 +395,32 @@ public sealed class StorageAndProcessTests
 
     [Test]
     [Platform("MacOsX")]
+    public void ReadArguments_ProcessExitsAfterIdentityRead_ReturnsNull()
+    {
+        using var process = new CaffeinateProcessFactory().Start(KeepAwakeMode.MacOnly, TimeSpan.FromSeconds(15));
+        var identity = process.Identity;
+        try
+        {
+            var arguments = MacCaffeinateMonitor.ReadArguments(identity);
+            Assert.That(arguments, Is.Not.Null);
+            Assert.That(MacCaffeinateMonitor.TimeoutDeadline(arguments!, DateTimeOffset.UnixEpoch),
+                Is.EqualTo(DateTimeOffset.UnixEpoch.AddSeconds(15)));
+            process.Stop();
+            Assert.That(Assert.Throws<System.ComponentModel.Win32Exception>(() => MacCaffeinateMonitor.ReadNativeArguments(identity.Pid))!.NativeErrorCode,
+                Is.EqualTo(MacCaffeinateMonitor.Einval));
+            Assert.That(MacCaffeinateMonitor.ReadArguments(identity), Is.Null);
+        }
+        finally
+        {
+            if (!process.HasExited)
+            {
+                process.Stop();
+            }
+        }
+    }
+
+    [Test]
+    [Platform("MacOsX")]
     public void Attach_UnrelatedExecutableOrReusedIdentity_ReturnsNullWithoutSignaling()
     {
         using var other = Process.Start("/bin/sleep", "15")!;
