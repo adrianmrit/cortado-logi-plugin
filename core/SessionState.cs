@@ -9,7 +9,7 @@ public sealed record SavedState(Int32 SchemaVersion, KeepAwakeMode PreferredMode
 {
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public SavedSession? Session { get; init; }
-    public static SavedState Empty => new(3, KeepAwakeMode.MacOnly);
+    public static SavedState Empty => new(3, KeepAwakeMode.MacAndDisplay);
 
     public void Validate()
     {

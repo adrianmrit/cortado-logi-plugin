@@ -35,7 +35,9 @@ public sealed class StorageAndProcessTests
     }
 
     [Test]
-    public void Load_MissingFile_ReturnsInactiveDefaults() => Assert.That(new JsonStateStore(Path.Combine(directory, "state.json")).Load(), Is.EqualTo(SavedState.Empty));
+    public void Load_MissingFile_ReturnsMacAndDisplayAsInactiveDefault() =>
+        Assert.That(new JsonStateStore(Path.Combine(directory, "state.json")).Load(),
+            Is.EqualTo(new SavedState(3, KeepAwakeMode.MacAndDisplay)));
 
     [TestCase(SessionKind.Indefinite)]
     [TestCase(SessionKind.Duration)]

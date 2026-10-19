@@ -36,6 +36,13 @@ public sealed class SessionControllerTests
     }
 
     [Test]
+    public void StartIndefinite_UsesMacAndDisplayByDefault()
+    {
+        controller.StartIndefinite(controller.Snapshot.Revision);
+        Assert.That(controller.Snapshot.Active?.Mode, Is.EqualTo(KeepAwakeMode.MacAndDisplay));
+    }
+
+    [Test]
     public void StartIndefinite_VerifiesAndSavesSessionIdentity()
     {
         controller.StartIndefinite(controller.Snapshot.Revision);
@@ -52,6 +59,7 @@ public sealed class SessionControllerTests
     [Test]
     public void Preference_ChangesOnlyFutureSessionsAndPreservesSavedOwnership()
     {
+        controller.SetPreference(KeepAwakeMode.MacOnly);
         controller.StartIndefinite(0);
         controller.SetPreference(KeepAwakeMode.MacAndDisplay);
         Assert.Multiple(() =>
@@ -60,7 +68,7 @@ public sealed class SessionControllerTests
             Assert.That(controller.Snapshot.PreferredMode, Is.EqualTo(KeepAwakeMode.MacAndDisplay));
             Assert.That(store.State.PreferredMode, Is.EqualTo(KeepAwakeMode.MacAndDisplay));
             Assert.That(store.State.Session?.Active.Mode, Is.EqualTo(KeepAwakeMode.MacOnly));
-            Assert.That(store.Saves, Is.EqualTo(2));
+            Assert.That(store.Saves, Is.EqualTo(3));
         });
     }
 
@@ -120,6 +128,7 @@ public sealed class SessionControllerTests
     [Test]
     public void Extend_PreservesActualModeAndAddsToObservedRemaining()
     {
+        controller.SetPreference(KeepAwakeMode.MacOnly);
         controller.StartDuration(TimeSpan.FromMinutes(5), 0);
         controller.SetPreference(KeepAwakeMode.MacAndDisplay);
         clock.Advance(TimeSpan.FromMinutes(2));
@@ -132,11 +141,12 @@ public sealed class SessionControllerTests
     [Test]
     public void ChangeEndTime_FromDuration_UsesNewVerifiedProcess()
     {
+        controller.SetPreference(KeepAwakeMode.MacOnly);
         controller.StartDuration(TimeSpan.FromMinutes(5), 0);
         var end = clock.GetUtcNow().AddHours(2);
         controller.ChangeEndTime(end, controller.Snapshot.Revision);
         Assert.That(controller.Snapshot.Active, Is.EqualTo(new ActiveSession(SessionKind.Until, KeepAwakeMode.MacOnly, end)));
-        Assert.That(store.Saves, Is.EqualTo(2));
+        Assert.That(store.Saves, Is.EqualTo(3));
         Assert.That(store.State.Session?.Active, Is.EqualTo(controller.Snapshot.Active));
     }
 

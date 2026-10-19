@@ -23,7 +23,7 @@ public sealed class SessionController(IStateStore store, IAwakeProcessFactory fa
     private String? observationError;
     private DateTimeOffset? observedAt;
     private Int64 checkedTimestamp;
-    private SessionSnapshot published = new(0, KeepAwakeMode.MacOnly, null, null, null) { HasObservation = false };
+    private SessionSnapshot published = new(0, SavedState.Empty.PreferredMode, null, null, null) { HasObservation = false };
 
     public SessionSnapshot Snapshot
     {
