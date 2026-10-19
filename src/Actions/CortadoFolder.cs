@@ -30,6 +30,8 @@ namespace Loupedeck.CortadoPlugin
             this.menu.Open();
             this.Owner.Refreshed -= this.OnRefresh;
             this.Owner.Refreshed += this.OnRefresh;
+            this.Owner.DynamicFolderOpening -= this.OnDynamicFolderOpening;
+            this.Owner.DynamicFolderOpening += this.OnDynamicFolderOpening;
             this.lastStatus = null;
             this.OnRefresh();
             return true;
@@ -38,6 +40,7 @@ namespace Loupedeck.CortadoPlugin
         public override Boolean Unload()
         {
             this.Owner.Refreshed -= this.OnRefresh;
+            this.Owner.DynamicFolderOpening -= this.OnDynamicFolderOpening;
             this.active = false;
             return true;
         }
@@ -70,6 +73,20 @@ namespace Loupedeck.CortadoPlugin
                 this.active = false;
                 this.menu.Open();
                 return true;
+            }
+        }
+
+        private void OnDynamicFolderOpening(String folderName)
+        {
+            if (!String.Equals(folderName, this.Name, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            // Profile switches can bypass both lifecycle callbacks; reset before the host builds the layout.
+            lock (this.Owner.SyncRoot)
+            {
+                this.menu.Open();
             }
         }
 

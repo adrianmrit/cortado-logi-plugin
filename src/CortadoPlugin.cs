@@ -42,6 +42,7 @@ namespace Loupedeck.CortadoPlugin
         }
         internal Object SyncRoot { get; } = new();
         internal event Action? Refreshed;
+        internal event Action<String>? DynamicFolderOpening;
         internal SessionSnapshot? ExistingSnapshot => Volatile.Read(ref this.sessions)?.Snapshot;
         internal SessionSnapshot CurrentSnapshot
         {
@@ -74,6 +75,24 @@ namespace Loupedeck.CortadoPlugin
         public override Boolean HasNoApplication => true;
 
         public CortadoPlugin() => PluginLog.Init(this.Log);
+
+        public override Boolean TryProcessButtonEvent(String actionName, String actionParameter, DeviceButtonEvent2 deviceButtonEvent)
+        {
+            if (String.Equals(actionName, GenericActionNames.DynamicFolder, StringComparison.OrdinalIgnoreCase)
+                && deviceButtonEvent.EventType == DeviceButtonEventType.Press)
+            {
+                try
+                {
+                    this.DynamicFolderOpening?.Invoke(actionParameter);
+                }
+                catch (Exception exception)
+                {
+                    PluginLog.Error(exception, $"DynamicFolderOpening subscriber failed while opening folder '{actionParameter}'.");
+                }
+            }
+
+            return base.TryProcessButtonEvent(actionName, actionParameter, deviceButtonEvent);
+        }
 
         public override void Load()
         {

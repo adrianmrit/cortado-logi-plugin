@@ -612,6 +612,114 @@ public sealed class SdkContractTests
         }
     }
 
+    [TestCase("Duration", false)]
+    [TestCase("Time", false)]
+    [TestCase("Change\nend time", true)]
+    [TestCase("Settings", false)]
+    [TestCase("Presets", false)]
+    public void EntryPress_AfterProfileSwitchResetsMenuWithoutLifecycleCallbacks(String label, Boolean active)
+    {
+        using var sessions = new SessionController(new TestStore(), new TestFactory(), TimeProvider.System, _ => { });
+        sessions.Initialize();
+        if (active)
+        {
+            sessions.StartDuration(TimeSpan.FromMinutes(30), 0);
+        }
+
+        var original = sessions.Snapshot;
+        using var owner = CreateOwner(sessions);
+        var folder = CreateFolder(owner);
+        var menu = (CortadoMenu)folder.GetType().GetField("menu", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(folder)!;
+        try
+        {
+            folder.Activate();
+            var expectedLabels = menu.Items().Select(item => item.Label).ToArray();
+            for (var attempt = 0; attempt < 2; attempt++)
+            {
+                folder.RunCommand(menu.Items().Single(item => item.Label == label).Parameter);
+                if (menu.IsSelector)
+                {
+                    folder.ApplyAdjustment(menu.AdjustmentParameter("hour"), 1);
+                }
+                Assert.That(menu.View, Is.Not.EqualTo(MenuView.Root));
+                var viewBeforeOpening = menu.View;
+                foreach (var (actionName, parameter, eventType) in new[]
+                {
+                    (GenericActionNames.DynamicFolder, folder.Name, DeviceButtonEventType.Release),
+                    (GenericActionNames.DynamicFolder, "OtherFolder", DeviceButtonEventType.Press),
+                    (folder.CommandName, menu.Items()[0].Parameter, DeviceButtonEventType.Press)
+                })
+                {
+                    owner.TryProcessButtonEvent(actionName, parameter,
+                        new DeviceButtonEvent2(0, DeviceType.Loupedeck70, "test", 1, 0, eventType, 0));
+                    Assert.That(menu.View, Is.EqualTo(viewBeforeOpening), "Only this folder's entry press may reset its menu.");
+                }
+
+                // The host can discard the profile's navigation stack without calling Deactivate or Activate.
+                var handled = owner.TryProcessButtonEvent(GenericActionNames.DynamicFolder, folder.Name,
+                    new DeviceButtonEvent2(0, DeviceType.Loupedeck70, "test", 1, 0, DeviceButtonEventType.Press, 0));
+
+                Assert.Multiple(() =>
+                {
+                    Assert.That(handled, Is.False, "The host must still perform normal folder navigation.");
+                    Assert.That(menu.View, Is.EqualTo(MenuView.Root));
+                    Assert.That(menu.Items().Select(item => item.Label), Is.EqualTo(expectedLabels));
+                    Assert.That(folder.GetEncoderRotateActionNames(DeviceType.Loupedeck70), Is.Empty);
+                    Assert.That(sessions.Snapshot.Active, Is.EqualTo(original.Active));
+                    Assert.That(sessions.Snapshot.Revision, Is.EqualTo(original.Revision));
+                });
+                var createCommand = typeof(PluginDynamicFolder).GetMethod("CreateCommandName", BindingFlags.NonPublic | BindingFlags.Instance)!;
+                Assert.That(folder.GetButtonPressActionNames(DeviceType.Loupedeck70),
+                    Is.EqualTo(menu.Items().Select(item => (String)createCommand.Invoke(folder, [item.Parameter])!)),
+                    "The host must build the root layout even when activation is skipped.");
+            }
+        }
+        finally
+        {
+            folder.Unload();
+        }
+    }
+
+    [Test]
+    public void EntryPress_SubscriberFailureIsLoggedWithoutBlockingHostNavigation()
+    {
+        using var owner = new Loupedeck.CortadoPlugin.CortadoPlugin();
+        typeof(Plugin).GetProperty("Name")!.SetValue(owner, "Cortado");
+        const String failure = "A test folder-opening subscriber failed.";
+        String? notifiedFolder = null;
+        Action<String> subscriber = folderName =>
+        {
+            notifiedFolder = folderName;
+            throw new InvalidOperationException(failure);
+        };
+        owner.GetType().GetEvent("DynamicFolderOpening", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .GetAddMethod(nonPublic: true)!.Invoke(owner, [subscriber]);
+
+        var handled = owner.TryProcessButtonEvent(GenericActionNames.DynamicFolder, "TestFolder",
+            new DeviceButtonEvent2(0, DeviceType.Loupedeck70, "test", 1, 0, DeviceButtonEventType.Press, 0));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(notifiedFolder, Is.EqualTo("TestFolder"));
+            Assert.That(handled, Is.False, "A failed notification must not prevent normal host navigation.");
+        });
+        var log = Path.Combine(testLogDirectory, "Cortado.log");
+        Assert.That(SpinWait.SpinUntil(() =>
+        {
+            if (!File.Exists(log))
+            {
+                return false;
+            }
+
+            using var stream = new FileStream(log, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            using var reader = new StreamReader(stream);
+            var content = reader.ReadToEnd();
+            return content.Contains(failure, StringComparison.Ordinal) &&
+                content.Contains("DynamicFolderOpening subscriber failed while opening folder 'TestFolder'.", StringComparison.Ordinal);
+        }, TimeSpan.FromSeconds(2)), Is.True,
+            "The subscriber exception and affected folder must be logged rather than silently ignored.");
+    }
+
     [TestCase("Off")]
     [TestCase("Indefinitely")]
     [TestCase("5:00")]
