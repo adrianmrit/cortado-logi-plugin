@@ -1,19 +1,41 @@
+using System.Globalization;
+
 namespace Cortado.Core;
 
 public enum KeepAwakeMode { MacOnly, MacAndDisplay }
+public enum TimeDisplayFormat { TwentyFourHour = 0, TwelveHour = 1 }
 public enum SessionKind { Indefinite, Duration, Until, Unknown }
+
+public static class ClockTimeFormatter
+{
+    public static String Format(DateTimeOffset time, TimeDisplayFormat format) =>
+        Format(time.Hour, time.Minute, format);
+
+    public static String Format(Int32 hour, Int32 minute, TimeDisplayFormat format)
+    {
+        var time = new DateTime(1, 1, 1, hour, minute, 0);
+        return format switch
+        {
+            TimeDisplayFormat.TwentyFourHour => time.ToString("HH:mm", CultureInfo.InvariantCulture),
+            TimeDisplayFormat.TwelveHour => time.ToString("h:mm tt", CultureInfo.InvariantCulture),
+            _ => throw new ArgumentOutOfRangeException(nameof(format))
+        };
+    }
+}
 
 public sealed record ActiveSession(SessionKind Kind, KeepAwakeMode Mode, DateTimeOffset? Deadline);
 
 public sealed record SavedState(Int32 SchemaVersion, KeepAwakeMode PreferredMode)
 {
+    public TimeDisplayFormat TimeFormat { get; init; } = TimeDisplayFormat.TwentyFourHour;
+    public Boolean ShowModeBadge { get; init; } = true;
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public SavedSession? Session { get; init; }
     public static SavedState Empty => new(3, KeepAwakeMode.MacAndDisplay);
 
     public void Validate()
     {
-        if (SchemaVersion is not (1 or 2 or 3) || !Enum.IsDefined(PreferredMode))
+        if (SchemaVersion is not (1 or 2 or 3) || !Enum.IsDefined(PreferredMode) || !Enum.IsDefined(TimeFormat))
         {
             throw new InvalidDataException("Unsupported Cortado settings. Back up or remove state.json to reset.");
         }
@@ -48,6 +70,9 @@ public sealed record SessionSnapshot(Int64 Revision, KeepAwakeMode PreferredMode
     internal static readonly TimeSpan ExpirationGrace = TimeSpan.FromSeconds(2);
     public IReadOnlyList<ExternalCaffeinateSession> ExternalSessions { get; init; } = [];
     public TimeSpan? ExternalRemaining { get; init; }
+    public TimeDisplayFormat TimeFormat { get; init; } = TimeDisplayFormat.TwentyFourHour;
+    public Boolean ShowModeBadge { get; init; } = true;
+    public KeepAwakeMode ModeBadgeMode => Active?.Mode ?? PreferredMode;
     public Boolean HasObservation { get; init; } = true;
     public String? ObservationError { get; init; }
     public Int64 CheckedTimestamp { get; init; }
@@ -68,7 +93,8 @@ public sealed record SessionSnapshot(Int64 Revision, KeepAwakeMode PreferredMode
             null => "Off",
             { Kind: SessionKind.Unknown } => "Unknown",
             { Kind: SessionKind.Indefinite } => "Indefinitely",
-            { Kind: SessionKind.Until, Deadline: { } deadline } => $"Until {deadline.ToLocalTime():HH:mm}",
+            { Kind: SessionKind.Until, Deadline: { } deadline } =>
+                $"Until {ClockTimeFormatter.Format(deadline.ToLocalTime(), TimeFormat)}",
             _ => FormatRemaining(Remaining ?? TimeSpan.Zero)
         };
 

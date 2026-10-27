@@ -169,11 +169,78 @@ public sealed class CortadoMenuTests
     public void Settings_Selection_PersistsForNextSession()
     {
         Press("settings");
-        Press("display");
+        Assert.That(menu.Items().Select(item => item.Label), Does.Contain("Mac +\ndisplay"));
+        Press("modeMacAndDisplay");
+        Assert.That(sessions.Snapshot.PreferredMode, Is.EqualTo(KeepAwakeMode.MacOnly));
         menu.Open();
         Press("indefinite");
-        Assert.That(sessions.Snapshot.Active?.Mode, Is.EqualTo(KeepAwakeMode.MacAndDisplay));
+        Assert.That(sessions.Snapshot.Active?.Mode, Is.EqualTo(KeepAwakeMode.MacOnly));
+        menu.Open();
+        Press("settings");
+        Press("modeMacOnly");
+        Assert.That(sessions.Snapshot.PreferredMode, Is.EqualTo(KeepAwakeMode.MacAndDisplay));
     }
+
+    [Test]
+    public void Settings_Notice_ShowsOnlyWhenModeChangeIsDeferred()
+    {
+        Press("settings");
+        Assert.That(menu.Items().Select(item => item.Label), Does.Not.Contain("Applies next\nsession"));
+
+        menu.Open();
+        Press("indefinite");
+        Press("settings");
+        Assert.That(menu.Items().Select(item => item.Label), Does.Not.Contain("Applies next\nsession"));
+
+        Press("modeMacAndDisplay");
+        Assert.That(menu.Items().Select(item => item.Label), Does.Contain("Applies next\nsession"));
+
+        Press("modeMacOnly");
+        Assert.That(menu.Items().Select(item => item.Label), Does.Not.Contain("Applies next\nsession"));
+    }
+
+    [Test]
+    public void Settings_TimeFormatSelection_PersistsAndFormatsSelectorDraft()
+    {
+        Press("settings");
+        Assert.That(menu.Items().Select(item => item.Label), Does.Contain("24-hour"));
+
+        Press("timeFormat");
+        Assert.That(menu.Items().Select(item => item.Label), Does.Contain("12-hour\nAM/PM"));
+        Assert.That(sessions.Snapshot.TimeFormat, Is.EqualTo(TimeDisplayFormat.TwelveHour));
+        Press("timeFormat");
+        Assert.That(sessions.Snapshot.TimeFormat, Is.EqualTo(TimeDisplayFormat.TwentyFourHour));
+        Press("timeFormat");
+        Assert.That(sessions.Snapshot.TimeFormat, Is.EqualTo(TimeDisplayFormat.TwelveHour));
+
+        menu.Open();
+        Press("time");
+        Assert.That(menu.DraftLabel, Is.EqualTo("1:00 PM"));
+        Assert.That(sessions.Snapshot.TimeFormat, Is.EqualTo(TimeDisplayFormat.TwelveHour));
+    }
+
+    [Test]
+    public void Settings_ModeSubiconCanBeHiddenAndShown()
+    {
+        Press("settings");
+        var labels = menu.Items().Select(item => item.Label).ToArray();
+        var modeLabel = sessions.Snapshot.PreferredMode == KeepAwakeMode.MacOnly ? "Mac only" : "Mac +\ndisplay";
+        Assert.That(Array.IndexOf(labels, "Mode subicon\nshown"), Is.EqualTo(Array.IndexOf(labels, modeLabel) + 1));
+
+        Press("modeBadgeShown");
+        Assert.That(sessions.Snapshot.ShowModeBadge, Is.False);
+        Assert.That(menu.Items().Select(item => item.Label), Does.Contain("Mode subicon\nhidden"));
+
+        Press("modeBadgeHidden");
+        Assert.That(sessions.Snapshot.ShowModeBadge, Is.True);
+        Assert.That(menu.Items().Select(item => item.Label), Does.Contain("Mode subicon\nshown"));
+    }
+
+    [TestCase(0, "12:05 AM")]
+    [TestCase(12, "12:05 PM")]
+    [TestCase(13, "1:05 PM")]
+    public void ClockTimeFormatter_UsesTwelveHourClock(Int32 hour, String expected) =>
+        Assert.That(ClockTimeFormatter.Format(hour, 5, TimeDisplayFormat.TwelveHour), Is.EqualTo(expected));
 
     [Test]
     public void ChangeEndTime_LeavingDraft_PreservesExistingDeadline()

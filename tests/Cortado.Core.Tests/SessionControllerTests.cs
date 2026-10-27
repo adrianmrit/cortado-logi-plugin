@@ -72,6 +72,41 @@ public sealed class SessionControllerTests
         });
     }
 
+    [TestCase(TimeDisplayFormat.TwentyFourHour, "Until 13:00")]
+    [TestCase(TimeDisplayFormat.TwelveHour, "Until 1:00 PM")]
+    public void UntilStatus_UsesPersistedTimeFormat(TimeDisplayFormat format, String expected)
+    {
+        var localTime = new DateTime(2026, 10, 18, 13, 0, 0, DateTimeKind.Unspecified);
+        var deadline = new DateTimeOffset(localTime, TimeZoneInfo.Local.GetUtcOffset(localTime));
+        controller.SetTimeFormat(format);
+        controller.StartUntil(deadline, controller.Snapshot.Revision);
+
+        Assert.That(controller.Snapshot.Status, Is.EqualTo(expected));
+        Assert.That(store.State.TimeFormat, Is.EqualTo(format));
+    }
+
+    [Test]
+    public void TimeFormatPreference_SurvivesControllerRestart()
+    {
+        controller.SetTimeFormat(TimeDisplayFormat.TwelveHour);
+        using var fresh = new SessionController(store, factory, clock, errors.Add, monitor);
+        fresh.Initialize();
+
+        Assert.That(fresh.Snapshot.TimeFormat, Is.EqualTo(TimeDisplayFormat.TwelveHour));
+    }
+
+    [Test]
+    public void ModeBadgePreference_DefaultsOnAndSurvivesControllerRestart()
+    {
+        Assert.That(controller.Snapshot.ShowModeBadge, Is.True);
+        controller.SetShowModeBadge(false);
+        using var fresh = new SessionController(store, factory, clock, errors.Add, monitor);
+        fresh.Initialize();
+
+        Assert.That(fresh.Snapshot.ShowModeBadge, Is.False);
+        Assert.That(store.State.ShowModeBadge, Is.False);
+    }
+
     [Test]
     public void ExpiredMetadata_WithLiveProcess_ShowsUnknownRatherThanOff()
     {

@@ -98,9 +98,16 @@ public sealed class CortadoMenu(SessionController sessions, TimeProvider clock, 
 
                 break;
             case MenuView.Settings:
-                items.Add(("mac", (snapshot.PreferredMode == KeepAwakeMode.MacOnly ? "[x] " : "") + "Mac only"));
-                items.Add(("display", (snapshot.PreferredMode == KeepAwakeMode.MacAndDisplay ? "[x] " : "") + "Mac +\ndisplay"));
-                items.Add(("notice", "Applies to\nnext session"));
+                items.Add((snapshot.PreferredMode == KeepAwakeMode.MacOnly ? "modeMacOnly" : "modeMacAndDisplay",
+                    snapshot.PreferredMode == KeepAwakeMode.MacOnly ? "Mac only" : "Mac +\ndisplay"));
+                items.Add((snapshot.ShowModeBadge ? "modeBadgeShown" : "modeBadgeHidden",
+                    snapshot.ShowModeBadge ? "Mode subicon\nshown" : "Mode subicon\nhidden"));
+                items.Add(("timeFormat", snapshot.TimeFormat == TimeDisplayFormat.TwentyFourHour ? "24-hour" : "12-hour\nAM/PM"));
+                if (snapshot.IsActive && snapshot.Active?.Mode != snapshot.PreferredMode)
+                {
+                    items.Add(("notice", "Applies next\nsession"));
+                }
+
                 break;
             case MenuView.Info:
                 const Int32 chunkSize = 36;
@@ -137,7 +144,7 @@ public sealed class CortadoMenu(SessionController sessions, TimeProvider clock, 
 
     public String DraftLabel => View == MenuView.Duration
         ? $"{durationMinutes / 60}h {durationMinutes % 60:00}m"
-        : $"{hour:00}:{minute:00}";
+        : ClockTimeFormatter.Format(hour, minute, sessions.Snapshot.TimeFormat);
 
     public String AdjustmentParameter(String unit) => Parameter(unit);
 
@@ -198,11 +205,21 @@ public sealed class CortadoMenu(SessionController sessions, TimeProvider clock, 
                 info = Notice ?? sessions.Snapshot.Error ?? "No current error.";
                 Navigate(MenuView.Info);
                 break;
-            case "mac":
+            case "modeMacOnly":
+                sessions.SetPreference(KeepAwakeMode.MacAndDisplay);
+                break;
+            case "modeMacAndDisplay":
                 sessions.SetPreference(KeepAwakeMode.MacOnly);
                 break;
-            case "display":
-                sessions.SetPreference(KeepAwakeMode.MacAndDisplay);
+            case "timeFormat":
+                sessions.SetTimeFormat(sessions.Snapshot.TimeFormat == TimeDisplayFormat.TwentyFourHour
+                    ? TimeDisplayFormat.TwelveHour : TimeDisplayFormat.TwentyFourHour);
+                break;
+            case "modeBadgeShown":
+                sessions.SetShowModeBadge(false);
+                break;
+            case "modeBadgeHidden":
+                sessions.SetShowModeBadge(true);
                 break;
             case "previous":
                 page--;

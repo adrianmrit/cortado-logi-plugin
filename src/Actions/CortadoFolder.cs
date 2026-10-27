@@ -9,6 +9,8 @@ namespace Loupedeck.CortadoPlugin
         private CortadoMenu menu = null!;
         private String? lastStatus;
         private Boolean? lastIsActive;
+        private KeepAwakeMode? lastModeBadgeMode;
+        private Boolean? lastShowModeBadge;
         private Boolean active;
         private Boolean hadError;
         private readonly TimeProvider clock = TimeProvider.System;
@@ -238,11 +240,14 @@ namespace Loupedeck.CortadoPlugin
                 layoutChanged = this.active && (this.menu.Synchronize() || errorChanged);
                 var status = snapshot.Status;
                 outerChanged = status != this.lastStatus || snapshot.IsActive != this.lastIsActive ||
+                    snapshot.ModeBadgeMode != this.lastModeBadgeMode || snapshot.ShowModeBadge != this.lastShowModeBadge ||
                     this.clock.GetElapsedTime(this.lastPublishedAt) >= TimeSpan.FromSeconds(5);
                 if (outerChanged)
                 {
                     this.lastStatus = status;
                     this.lastIsActive = snapshot.IsActive;
+                    this.lastModeBadgeMode = snapshot.ModeBadgeMode;
+                    this.lastShowModeBadge = snapshot.ShowModeBadge;
                     this.lastPublishedAt = this.clock.GetTimestamp();
                 }
                 imagesVisible = this.active;

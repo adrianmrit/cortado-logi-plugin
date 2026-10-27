@@ -162,7 +162,7 @@ public sealed class SdkContractTests
     [TestCase("Width90Pixels")]
     [TestCase("Width116Pixels")]
     [TestCase("PluginIcon")]
-    public void Entry_CupIsLargerLowerAndHorizontallyCentered(String sizeName)
+    public void Entry_CupIsLargerLowerAndCentersTheSaucer(String sizeName)
     {
         var size = Enum.Parse<PluginImageSize>(sizeName);
         var renderer = plugin.GetType("Loupedeck.CortadoPlugin.CupRenderer")!;
@@ -170,7 +170,10 @@ public sealed class SdkContractTests
         foreach (var active in new[] { false, true })
         {
             var snapshot = new SessionSnapshot(0, KeepAwakeMode.MacOnly,
-                active ? new(SessionKind.Indefinite, KeepAwakeMode.MacOnly, null) : null, null, null);
+                active ? new(SessionKind.Indefinite, KeepAwakeMode.MacOnly, null) : null, null, null)
+            {
+                ShowModeBadge = false
+            };
             using var image = (BitmapImage)entry.Invoke(null, [size, snapshot])!;
             using var cup = (BitmapImage)renderer.GetMethod("ReadCup", BindingFlags.NonPublic | BindingFlags.Static)!
                 .Invoke(null, [active])!;
@@ -185,11 +188,27 @@ public sealed class SdkContractTests
                 Assert.That(after.Height, Is.InRange(before.Height * 1.10 - 1, before.Height * 1.15 + 1),
                     "Allow one pixel of rasterization rounding at the smallest sizes.");
                 Assert.That(after.Top, Is.GreaterThan(before.Top));
-                Assert.That(after.CenterX, Is.EqualTo(image.Width / 2.0).Within(1));
-                Assert.That(after.Top, Is.GreaterThanOrEqualTo(image.Height * 0.20));
+                Assert.That(PlateCenterX(image.ToArray(), image.Width), Is.EqualTo(image.Width / 2.0).Within(2));
+                Assert.That(after.Top, Is.GreaterThanOrEqualTo(image.Height * 0.27));
                 Assert.That(after.Bottom, Is.LessThanOrEqualTo(image.Height * 0.90), "Leave room below the cup for the native caption.");
             });
         }
+    }
+
+    [Test]
+    public void Entry_ModeBadgeHasClearanceFromTopBorder()
+    {
+        var renderer = plugin.GetType("Loupedeck.CortadoPlugin.CupRenderer")!;
+        var method = renderer.GetMethod("Entry", BindingFlags.Public | BindingFlags.Static)!;
+        var snapshot = new SessionSnapshot(0, KeepAwakeMode.MacAndDisplay, null, null, null)
+        {
+            ShowModeBadge = true
+        };
+        using var image = (BitmapImage)method.Invoke(null, [PluginImageSize.Width90Pixels, snapshot])!;
+        var bounds = ArtworkBounds(image.ToArray(), image.Width);
+
+        Assert.That(bounds.Top, Is.InRange(image.Height * 0.18, image.Height * 0.22),
+            "Keep the live icon's mode badge close to the cup, not the top border.");
     }
 
     private static String PackageDirectory => typeof(SdkContractTests).Assembly
@@ -241,6 +260,8 @@ public sealed class SdkContractTests
         Object?[] arguments = [Path.Combine(PackageDirectory, "metadata", "LoupedeckPackage.yaml"), null];
         Assert.That(parser.Invoke(null, arguments), Is.True);
         Assert.That(metadataType.GetProperty("BackgroundColor")!.GetValue(arguments[1]), Is.EqualTo(0xff000000u));
+        Assert.That(metadataType.GetProperty("HomePageUrl")!.GetValue(arguments[1]),
+            Is.EqualTo("https://github.com/adrianmrit/cortado-logi-plugin"));
     }
 
     private readonly record struct Bounds(Int32 Left, Int32 Top, Int32 Right, Int32 Bottom)
@@ -268,7 +289,8 @@ public sealed class SdkContractTests
         var verbs = new[]
         {
             "indefinite", "duration", "time", "presets", "settings", "stop", "extend5", "extend60", "change",
-            "minutes", "hours", "preset5", "preset60", "preset720", "mac", "display", "notice", "done",
+            "minutes", "hours", "preset5", "preset60", "preset720", "modeMacOnly", "modeMacAndDisplay",
+            "modeBadgeShown", "modeBadgeHidden", "timeFormat", "notice", "done",
             "previous", "next", "value", "hourUp", "hourDown", "minuteUp", "minuteDown", "confirm0", "error"
         };
         foreach (var size in new[] { "Width60Pixels", "Width90Pixels", "Width116Pixels" })
@@ -278,6 +300,47 @@ public sealed class SdkContractTests
                 yield return new TestCaseData(size, verb);
             }
         }
+    }
+
+    [TestCase("modeMacOnly", "modeMacAndDisplay")]
+    [TestCase("modeBadgeShown", "modeBadgeHidden")]
+    public void Menu_SettingIconsUseStableParameterState(String firstState, String secondState)
+    {
+        var renderer = plugin.GetType("Loupedeck.CortadoPlugin.CupRenderer")!;
+        var method = renderer.GetMethod("Menu", BindingFlags.Public | BindingFlags.Static)!;
+        using var first = (BitmapImage)method.Invoke(null,
+            [PluginImageSize.Width90Pixels, new MenuItem("1|" + firstState, "localized setting label")])!;
+        using var sameStateWithDifferentLabel = (BitmapImage)method.Invoke(null,
+            [PluginImageSize.Width90Pixels, new MenuItem("1|" + firstState, "different text\nand newline")])!;
+        using var second = (BitmapImage)method.Invoke(null,
+            [PluginImageSize.Width90Pixels, new MenuItem("1|" + secondState, "localized setting label")])!;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(sameStateWithDifferentLabel.ToArray(), Is.EqualTo(first.ToArray()));
+            Assert.That(second.ToArray(), Is.Not.EqualTo(first.ToArray()));
+        });
+    }
+
+    [Test]
+    public void Menu_SettingsIconsShareVerticalAlignment()
+    {
+        var renderer = plugin.GetType("Loupedeck.CortadoPlugin.CupRenderer")!;
+        var method = renderer.GetMethod("Menu", BindingFlags.Public | BindingFlags.Static)!;
+        var settings = new[]
+        {
+            new MenuItem("1|modeMacAndDisplay", "Mac +\ndisplay"),
+            new MenuItem("1|timeFormat", "24-hour"),
+            new MenuItem("1|modeBadgeShown", "Mode subicon\nshown")
+        };
+        var centers = settings.Select(item =>
+        {
+            using var image = (BitmapImage)method.Invoke(null, [PluginImageSize.Width90Pixels, item])!;
+            var bytes = image.ToArray();
+            return ArtworkBounds(bytes, image.Width).CenterY;
+        }).ToArray();
+
+        Assert.That(centers.Max() - centers.Min(), Is.LessThanOrEqualTo(1));
     }
 
     [TestCaseSource(nameof(MenuArtworkCases))]
@@ -331,6 +394,27 @@ public sealed class SdkContractTests
         });
     }
 
+    private static Double PlateCenterX(Byte[] bytes, Int32 width)
+    {
+        var type = Assembly.Load("SkiaSharp").GetType("SkiaSharp.SKBitmap", throwOnError: true)!;
+        using var bitmap = (IDisposable)type.GetMethod("Decode", [typeof(Byte[])])!.Invoke(null, [bytes])!;
+        var pixel = type.GetMethod("GetPixel", [typeof(Int32), typeof(Int32)])!;
+        var alpha = pixel.ReturnType.GetProperty("Alpha")!;
+        var firstRow = width * 84 / 100;
+        var lastRow = width * 90 / 100;
+        var span = Enumerable.Range(firstRow, lastRow - firstRow + 1)
+            .Select(y =>
+            {
+                var visible = Enumerable.Range(0, width)
+                    .Where(x => (Byte)alpha.GetValue(pixel.Invoke(bitmap, [x, y]))! >= 16).ToArray();
+                return (Left: visible.FirstOrDefault(-1), Right: visible.LastOrDefault(-1), Count: visible.Length);
+            })
+            .OrderByDescending(row => row.Count)
+            .First();
+        Assert.That(span.Count, Is.GreaterThan(0), "Expected visible saucer artwork near the bottom of the cup.");
+        return (span.Left + span.Right) / 2.0;
+    }
+
     [Test]
     public void PluginRefresh_ProcessInspectionFailureStillPublishesTheErrorStatus()
     {
@@ -373,18 +457,68 @@ public sealed class SdkContractTests
             refresh.Invoke(folder, null);
             Assert.That(SpinWait.SpinUntil(() => events.Count > 1, TimeSpan.FromSeconds(2)), Is.False);
             Assert.That(events, Has.Count.EqualTo(1));
+            sessions.SetPreference(KeepAwakeMode.MacOnly);
+            refresh.Invoke(folder, null);
+            Assert.That(SpinWait.SpinUntil(() => events.Count == 2, TimeSpan.FromSeconds(2)), Is.True,
+                "Changing the preferred mode while off must refresh its badge.");
+            sessions.SetShowModeBadge(false);
+            refresh.Invoke(folder, null);
+            Assert.That(SpinWait.SpinUntil(() => events.Count == 3, TimeSpan.FromSeconds(2)), Is.True,
+                "Changing badge visibility must refresh the status image.");
             sessions.StartDuration(TimeSpan.FromMinutes(5), 0);
             refresh.Invoke(folder, null);
-            Assert.That(SpinWait.SpinUntil(() => events.Count == 2, TimeSpan.FromSeconds(2)), Is.True);
+            Assert.That(SpinWait.SpinUntil(() => events.Count == 4, TimeSpan.FromSeconds(2)), Is.True);
             using var before = folder.GetButtonImage(PluginImageSize.Width90Pixels);
             Assert.That(folder.GetButtonDisplayName(PluginImageSize.Width90Pixels), Is.EqualTo("5:00"));
             clock.Seconds++;
             sessions.Tick();
             refresh.Invoke(folder, null);
-            Assert.That(SpinWait.SpinUntil(() => events.Count == 3, TimeSpan.FromSeconds(2)), Is.True);
+            Assert.That(SpinWait.SpinUntil(() => events.Count == 5, TimeSpan.FromSeconds(2)), Is.True);
             using var after = folder.GetButtonImage(PluginImageSize.Width90Pixels);
             Assert.That(folder.GetButtonDisplayName(PluginImageSize.Width90Pixels), Is.EqualTo("4:59"));
             Assert.That(before.ToArray(), Is.EqualTo(after.ToArray()), "Countdown updates only the native caption.");
+        }
+        finally
+        {
+            folder.Unload();
+        }
+    }
+
+    [Test]
+    public void StatusIcon_ShowsModeWhenOffAndActiveAndCanHideSubicon()
+    {
+        var clock = new TestClock();
+        using var sessions = new SessionController(new TestStore(), new TestFactory(), clock, _ => { });
+        sessions.Initialize();
+        using var owner = CreateOwner(sessions);
+        var folder = CreateFolder(owner);
+        try
+        {
+            using var offWithDisplayBadge = folder.GetButtonImage(PluginImageSize.Width90Pixels);
+            sessions.SetPreference(KeepAwakeMode.MacOnly);
+            using var offWithMacOnlyBadge = folder.GetButtonImage(PluginImageSize.Width90Pixels);
+            Assert.That(offWithMacOnlyBadge.ToArray(), Is.Not.EqualTo(offWithDisplayBadge.ToArray()));
+
+            sessions.StartIndefinite(sessions.Snapshot.Revision);
+            using var activeMacOnlyBadge = folder.GetButtonImage(PluginImageSize.Width90Pixels);
+            sessions.SetPreference(KeepAwakeMode.MacAndDisplay);
+            using var activeAfterPreferenceChange = folder.GetButtonImage(PluginImageSize.Width90Pixels);
+            Assert.That(activeAfterPreferenceChange.ToArray(), Is.EqualTo(activeMacOnlyBadge.ToArray()),
+                "An active session's badge must reflect its actual mode, not the next-session preference.");
+
+            sessions.SetShowModeBadge(false);
+            using var withoutBadge = folder.GetButtonImage(PluginImageSize.Width90Pixels);
+            Assert.That(withoutBadge.ToArray(), Is.Not.EqualTo(activeMacOnlyBadge.ToArray()));
+
+            sessions.SetShowModeBadge(true);
+            using var withBadgeAgain = folder.GetButtonImage(PluginImageSize.Width90Pixels);
+            Assert.That(withBadgeAgain.ToArray(), Is.EqualTo(activeMacOnlyBadge.ToArray()));
+
+            sessions.Stop(sessions.Snapshot.Revision);
+            sessions.SetPreference(KeepAwakeMode.MacAndDisplay);
+            sessions.StartIndefinite(sessions.Snapshot.Revision);
+            using var activeDisplayBadge = folder.GetButtonImage(PluginImageSize.Width90Pixels);
+            Assert.That(activeDisplayBadge.ToArray(), Is.Not.EqualTo(activeMacOnlyBadge.ToArray()));
         }
         finally
         {

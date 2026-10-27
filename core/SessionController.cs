@@ -73,24 +73,22 @@ public sealed class SessionController(IStateStore store, IAwakeProcessFactory fa
 
     public void SetPreference(KeepAwakeMode mode)
     {
-        lock (gate)
+        SavePreferences(current =>
         {
-            EnsureInitialized();
-            if (!Enum.IsDefined(mode))
-            {
-                throw new ArgumentOutOfRangeException(nameof(mode));
-            }
-
-            var updated = preferences with { PreferredMode = mode };
-            store.Save(updated);
-            preferences = updated;
-            stateDirty = false;
-            persistenceError = null;
-            preferenceError = null;
-            operationError = null;
-            Publish();
-        }
+            return !Enum.IsDefined(mode) ? throw new ArgumentOutOfRangeException(nameof(mode)) : (current with { PreferredMode = mode });
+        });
     }
+
+    public void SetTimeFormat(TimeDisplayFormat format)
+    {
+        SavePreferences(current =>
+        {
+            return !Enum.IsDefined(format) ? throw new ArgumentOutOfRangeException(nameof(format)) : (current with { TimeFormat = format });
+        });
+    }
+
+    public void SetShowModeBadge(Boolean show) =>
+        SavePreferences(current => current with { ShowModeBadge = show });
 
     public void StartIndefinite(Int64 expectedRevision) => Start(SessionKind.Indefinite, null, expectedRevision);
 
@@ -376,6 +374,22 @@ public sealed class SessionController(IStateStore store, IAwakeProcessFactory fa
         }
     }
 
+    private void SavePreferences(Func<SavedState, SavedState> update)
+    {
+        lock (gate)
+        {
+            EnsureInitialized();
+            var updated = update(preferences);
+            store.Save(updated);
+            preferences = updated;
+            stateDirty = false;
+            persistenceError = null;
+            preferenceError = null;
+            operationError = null;
+            Publish();
+        }
+    }
+
     private void Persist()
     {
         if (!stateDirty)
@@ -425,6 +439,8 @@ public sealed class SessionController(IStateStore store, IAwakeProcessFactory fa
             ExternalSessions = Array.AsReadOnly(external),
             ExternalRemaining = external.Length > 0 && external.All(session => session.Deadline is not null)
                 ? external.Max(session => session.Deadline!.Value) - clock.GetUtcNow() : null,
+            TimeFormat = preferences.TimeFormat,
+            ShowModeBadge = preferences.ShowModeBadge,
             HasObservation = hasObservation,
             ObservationError = observationError,
             ObservedAt = observedAt,

@@ -6,20 +6,46 @@ namespace Loupedeck.CortadoPlugin
 {
     internal static class CupRenderer
     {
-        private static readonly ConcurrentDictionary<(PluginImageSize Size, Boolean Active), Lazy<Byte[]>> entries = new();
+        private static readonly ConcurrentDictionary<(PluginImageSize Size, Boolean Active, Boolean ShowModeBadge, KeepAwakeMode Mode), Lazy<Byte[]>> entries = new();
 
-        public static BitmapImage Entry(PluginImageSize size, SessionSnapshot snapshot) =>
-            entries.GetOrAdd((size, snapshot.IsActive), key => new(() => RenderEntry(key.Size, key.Active))).Value.ToImage();
+        public static BitmapImage Entry(PluginImageSize size, SessionSnapshot snapshot)
+        {
+            var key = (size, snapshot.IsActive, snapshot.ShowModeBadge, snapshot.ModeBadgeMode);
+            return entries.GetOrAdd(key, value => new(() =>
+                RenderEntry(value.Size, value.Active, value.ShowModeBadge, value.Mode))).Value.ToImage();
+        }
 
-        private static Byte[] RenderEntry(PluginImageSize size, Boolean active)
+        private static Byte[] RenderEntry(PluginImageSize size, Boolean active, Boolean showModeBadge, KeepAwakeMode mode)
         {
             using var bitmap = new BitmapBuilder(size);
             bitmap.Clear(BitmapColor.Transparent);
             var width = bitmap.Width;
             using var cup = ReadCup(active);
-            // Center the visible cup and handle, not the SVG's padded viewport.
-            bitmap.DrawImage(cup, width / 50, bitmap.Height * 6 / 25, width * 9 / 10, bitmap.Height * 17 / 25);
+            // Center the cup body and saucer; the right-side handle is intentionally asymmetric.
+            bitmap.DrawImage(cup, width * 3 / 50, bitmap.Height * 7 / 25, width * 9 / 10, bitmap.Height * 16 / 25);
+            if (showModeBadge)
+            {
+                DrawModeBadge(bitmap, mode);
+            }
+
             return bitmap.ToArray();
+        }
+
+        private static void DrawModeBadge(BitmapBuilder bitmap, KeepAwakeMode mode)
+        {
+            const String monitor = "<rect x='5' y='5' width='14' height='11' rx='1'/>" +
+                "<path d='M12 16v3M9 20h6'/>";
+            var indicator = mode switch
+            {
+                KeepAwakeMode.MacOnly => "<path d='m5 5 14 10' stroke='#ff9d8c' stroke-width='2.5'/>",
+                KeepAwakeMode.MacAndDisplay => "",
+                _ => throw new ArgumentOutOfRangeException(nameof(mode))
+            };
+            const String background = "<circle cx='12' cy='12' r='11' fill='#242830' stroke='#edb67d' stroke-width='1'/>";
+            using var badge = BitmapImage.FromSvg(
+                $"<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 24 24'><g fill='none' stroke='#f5f2ee' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'>{background}{monitor}{indicator}</g></svg>");
+            bitmap.DrawImage(badge, bitmap.Width * 13 / 20, bitmap.Height / 5,
+                bitmap.Width / 4, bitmap.Height / 4);
         }
 
         public static BitmapImage Icon()
@@ -48,6 +74,9 @@ namespace Loupedeck.CortadoPlugin
             var verb = item.Parameter[(item.Parameter.IndexOf('|') + 1)..];
             var clock = "<circle cx='12' cy='12' r='9'/><path d='M12 6v6l4 2'/>";
             var hourglass = "<path d='M6 3h12M6 21h12M7 3v4c0 3 10 7 10 10v4M17 3v4c0 3-10 7-10 10v4'/>";
+            const String screen = "<rect x='2' y='3' width='20' height='14' rx='2'/>" +
+                "<path d='M12 17v4M8 21h8'/>";
+            const String eye = "<path d='M2 12s3.5-7.5 10-7.5 10 7.5 10 7.5-3.5 7.5-10 7.5S2 12 2 12Z'/>";
             var glyph = verb switch
             {
                 "indefinite" => "<path d='M12 12C8 5 2 7 2 12s6 7 10 0 10-5 10 0-6 7-10 0Z'/>",
@@ -57,8 +86,11 @@ namespace Loupedeck.CortadoPlugin
                 "stop" => "<rect x='5' y='5' width='14' height='14' rx='2'/>",
                 "extend5" or "extend60" => "<path d='M12 3a9 9 0 1 0 9 9M12 6v6l-4 2M19 2v8M15 6h8'/>",
                 "settings" => "<path d='M4 3v4M4 11v10M12 3v11M12 18v3M20 3v2M20 9v12'/><rect x='1' y='7' width='6' height='4' rx='1'/><rect x='9' y='14' width='6' height='4' rx='1'/><rect x='17' y='5' width='6' height='4' rx='1'/>",
-                "mac" => "<path d='M5 4h14v12H5zM3 20h18l-2-4H5z'/>",
-                "display" => "<rect x='2' y='3' width='20' height='14' rx='2'/><path d='M12 17v4M8 21h8'/>",
+                "modeMacOnly" => screen + "<path d='m5 5 14 10' stroke='#ff9d8c' stroke-width='2.5'/>",
+                "modeMacAndDisplay" => screen,
+                "modeBadgeShown" => eye + "<circle cx='12' cy='12' r='2.5'/>",
+                "modeBadgeHidden" => eye + "<path d='M6 12c1.4 1.4 3.4 2.2 6 2.2s4.6-.8 6-2.2'/>",
+                "timeFormat" => clock,
                 "hourUp" or "minuteUp" => "<circle cx='12' cy='12' r='9'/><path d='M12 7v10M7 12h10'/>",
                 "hourDown" or "minuteDown" => "<circle cx='12' cy='12' r='9'/><path d='M7 12h10'/>",
                 "done" => "<path d='m4 12 5 5L20 6'/>",

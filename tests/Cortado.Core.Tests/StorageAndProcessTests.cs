@@ -27,7 +27,11 @@ public sealed class StorageAndProcessTests
     public void Save_RoundTrip_PreservesPreferencesWithoutInventingSession()
     {
         var store = new JsonStateStore(Path.Combine(directory, "state.json"));
-        var state = new SavedState(3, KeepAwakeMode.MacAndDisplay);
+        var state = new SavedState(3, KeepAwakeMode.MacAndDisplay)
+        {
+            TimeFormat = TimeDisplayFormat.TwelveHour,
+            ShowModeBadge = false
+        };
         store.Save(state);
         Assert.That(store.Load(), Is.EqualTo(state));
         Assert.That(Directory.GetFiles(directory), Has.Length.EqualTo(1));
@@ -38,6 +42,20 @@ public sealed class StorageAndProcessTests
     public void Load_MissingFile_ReturnsMacAndDisplayAsInactiveDefault() =>
         Assert.That(new JsonStateStore(Path.Combine(directory, "state.json")).Load(),
             Is.EqualTo(new SavedState(3, KeepAwakeMode.MacAndDisplay)));
+
+    [Test]
+    public void Load_StateWithoutOptionalPreferences_UsesDefaults()
+    {
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "state.json"), "{\"SchemaVersion\":3,\"PreferredMode\":1}");
+
+        var state = new JsonStateStore(Path.Combine(directory, "state.json")).Load();
+        Assert.Multiple(() =>
+        {
+            Assert.That(state.TimeFormat, Is.EqualTo(TimeDisplayFormat.TwentyFourHour));
+            Assert.That(state.ShowModeBadge, Is.True);
+        });
+    }
 
     [TestCase(SessionKind.Indefinite)]
     [TestCase(SessionKind.Duration)]
@@ -132,6 +150,7 @@ public sealed class StorageAndProcessTests
     [TestCase("{\"SchemaVersion\":\"1\",\"PreferredMode\":0}")]
     [TestCase("{\"SchemaVersion\":2,\"PreferredMode\":null}")]
     [TestCase("{\"SchemaVersion\":2,\"PreferredMode\":\"MacOnly\"}")]
+    [TestCase("{\"SchemaVersion\":3,\"PreferredMode\":1,\"TimeFormat\":99}")]
     public void Load_CorruptOrUnknownState_Rejects(String json)
     {
         Directory.CreateDirectory(directory);
